@@ -1,8 +1,11 @@
 # Morning Brief: Automated Market Briefing with n8n + Claude
 
 A self-hosted n8n workflow that emails me a market brief every weekday at 7 am: live prices for Bitcoin and my stock holdings in a color-coded table, plus a three-bullet macro summary written by Claude from the last 24 hours of financial news.
+_________________________________________________________________________________________________________________________________________________________________________________________________________________
+
 ![Morning Brief email](email.png)
 
+_________________________________________________________________________________________________________________________________________________________________________________________________________________
 ## What it does
 
 Every weekday morning the workflow:
