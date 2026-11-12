@@ -1,0 +1,356 @@
+{
+  "name": "Morning Brief v2",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 0 7 * * 1-5"
+            }
+          ]
+        },
+        "misfirePolicy": "coalesce_owner"
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -192,
+        -176
+      ],
+      "id": "c27936bf-b082-4ee1-a9a7-dd19cf06eab5",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "sendTo": "Danieljclee06@gmail.com",
+        "subject": "={{ $json.subject }}",
+        "message": "=Morning Brief \n{{ $json.message }}\n",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        976,
+        -176
+      ],
+      "id": "2b4f2015-1fe5-4cd8-85ce-d5142fb6b73c",
+      "name": "Send a message",
+      "webhookId": "1ae57217-c93e-4b8b-bb77-a84638aaec64",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "m98Aucx6Y1fg0dfq",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        608,
+        -176
+      ],
+      "id": "472b73e5-e07f-4c10-b26b-d7353ff03b2d",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "url": "https://finnhub.io/api/v1/quote",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "={{ $json.ticker }}",
+              "value": "=  {{ $json.ticker }}"
+            },
+            {
+              "name": "symbol",
+              "value": "={{ $json.ticker }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Finnhub-Token ",
+              "value": "dbn3629r01qu4aqmnomgdbn3629r01qu4aqmnon0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        352,
+        -128
+      ],
+      "id": "2aa86cde-2856-4df5-9f58-1a5126e45db5",
+      "name": "Finnhub"
+    },
+    {
+      "parameters": {
+        "url": "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        240,
+        -272
+      ],
+      "id": "1eaa35c1-7f41-4909-b7d2-0c79f8b6a8f3",
+      "name": "CoinGecko",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "  // CONFIG: edit this list to add or remove tickers\n  const tickers = ['SPY', 'NVDA', 'AMZN', 'MSTR', 'BN', 'GOOGL', 'GLD'];\n\n  return tickers.map(t => ({ json: { ticker: t } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        144,
+        -128
+      ],
+      "id": "c76a6b89-08d3-4360-bd12-d5d1846564fe",
+      "name": "Ticker Config"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ===== DATA =====\nconst btc = $('CoinGecko').first().json.bitcoin;\nconst tickers = $('Ticker Config').all().map(i => i.json.ticker);\nconst quotes = $('Finnhub').all().map(i => i.json);\n\n// ===== HELPERS =====\nconst usd = n => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });\nconst pct = n => (n == null ? 'n/a' : `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`);\nconst color = n => (n == null ? '#6b7280' : n >= 0 ? '#16a34a' : '#dc2626');\nconst esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n\nconst td = 'padding:8px 12px;border-bottom:1px solid #e5e7eb;';\nconst tdRight = td + 'text-align:right;';\n\n// ===== PRICE TABLE =====\nconst row = (name, price, change) => `\n  <tr>\n    <td style=\"${td}font-weight:600;\">${name}</td>\n    <td style=\"${tdRight}\">${price == null ? 'no data' : usd(price)}</td>\n    <td style=\"${tdRight}color:${color(change)};font-weight:600;\">${pct(change)}</td>\n  </tr>`;\n\nconst rows = [row('BTC', btc.usd, btc.usd_24h_change)];\nquotes.forEach((q, i) => {\n  rows.push(q.c ? row(tickers[i], q.c, q.dp) : row(tickers[i], null, null));\n});\n\n// ===== MACRO BULLETS FROM CLAUDE =====\nlet bullets = [];\ntry {\n  const blocks = $('Claude').first().json.content || [];\n  const text = blocks\n    .filter(b => b.type === 'text')\n    .map(b => b.text)\n    .join('\\n');\n\n  bullets = text\n    .split('\\n')\n    .map(l => l.replace(/^[-•*]\\s*/, '').trim())\n    .filter(Boolean)\n    .slice(0, 3);\n} catch (e) {\n  bullets = [];\n}\n\nconst macroHtml = bullets.length\n  ? bullets.map(b => `<p style=\"margin:0 0 8px;\">• ${esc(b)}</p>`).join('')\n  : `<p style=\"color:#6b7280;margin:0;\">Macro headlines unavailable today.</p>`;\n\n// ===== ASSEMBLE EMAIL =====\nconst dateStr = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });\n\nconst html = `\n<div style=\"font-family:Arial,Helvetica,sans-serif;color:#111827;max-width:560px;\">\n  <h2 style=\"margin:0 0 12px;\">Morning Brief, ${dateStr}</h2>\n  <table style=\"border-collapse:collapse;min-width:360px;\">\n    <thead>\n      <tr style=\"background:#f3f4f6;\">\n        <th style=\"${td}text-align:left;\">Asset</th>\n        <th style=\"${tdRight}\">Price</th>\n        <th style=\"${tdRight}\">Change</th>\n      </tr>\n    </thead>\n    <tbody>${rows.join('')}</tbody>\n  </table>\n  <p style=\"font-size:12px;color:#6b7280;margin:8px 0 20px;\">BTC change is 24h. Stock change is vs. previous close.</p>\n\n  <h3 style=\"margin:0 0 8px;\">Macro Watch</h3>\n  ${macroHtml}\n  <p style=\"font-size:11px;color:#9ca3af;margin-top:16px;\">Summary generated by Claude from Finnhub headlines.</p>\n</div>`;\n\nreturn [{ json: { subject: `Morning Brief — ${dateStr}`, message: html } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        784,
+        -160
+      ],
+      "id": "18314853-ea93-48e7-9624-48765e67045f",
+      "name": "Format"
+    },
+    {
+      "parameters": {
+        "url": "https://finnhub.io/api/v1/news",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "category",
+              "value": "general"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Finnhub-Token",
+              "value": "dbn3629r01qu4aqmnomgdbn3629r01qu4aqmnon0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        96,
+        32
+      ],
+      "id": "cee68b28-2719-4f9c-9e1a-47c376ec19ce",
+      "name": "Finnhub News"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Keep only the last 24 hours of news\nconst cutoff = Date.now() / 1000 - 24 * 3600;\nconst news = $input.all().map(i => i.json).filter(n => n.datetime >= cutoff);\n\n// Macro keywords: rates, jobs, inflation, oil, etc.\nconst macro = /\\b(fed|fomc|powell|rate|rates|inflation|cpi|pce|jobs|payroll|unemployment|oil|opec|crude|treasury|yield|recession|gdp|tariff)\\b/i;\nconst macroNews = news.filter(n => macro.test(`${n.headline} ${n.summary}`));\n\n// Fall back to general news if it's a slow macro day\nconst picked = (macroNews.length >= 5 ? macroNews : news).slice(0, 20);\n\nconst headlines = picked\n  .map((n, i) => `${i + 1}. ${n.headline} (${n.source})`)\n  .join('\\n');\n\nreturn [{ json: { headlines, count: picked.length } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        32
+      ],
+      "id": "644937c0-1fc6-4afe-b66b-c1170a3f409a",
+      "name": "Prep Headlines"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: \"claude-haiku-5-5\",\n  max_tokens: 1000,\n  output_config: { effort: \"low\" },\n  system: \"You write a morning macro brief for a retail investor who holds BTC, MSTR, NVDA, AMZN, BN, BMNR, GLD and SPY. Summarize the headlines into exactly 3 bullets covering the most market-relevant macro news (rates/Fed, jobs, inflation, oil, policy). Each bullet is one sentence, max 30 words. Output only the 3 bullets, each on its own line starting with '- '. No intro, no outro.\",\n  messages: [{ role: \"user\", content: \"Headlines from the last 24 hours:\\n\\n\" + $json.headlines }]\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        384,
+        32
+      ],
+      "id": "398e560c-af24-40cd-8554-bb7241d065dc",
+      "name": "Claude",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "O7yYTdIUm81We7WD",
+          "name": "Anthropic API Key"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "CoinGecko",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Finnhub News",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ticker Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        []
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Format",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finnhub": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CoinGecko": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Ticker Config": {
+      "main": [
+        [
+          {
+            "node": "Finnhub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finnhub News": {
+      "main": [
+        [
+          {
+            "node": "Prep Headlines",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Headlines": {
+      "main": [
+        [
+          {
+            "node": "Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "7a857967-29e9-45bd-b9bc-f0133f46b2c0",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "58982f8ecf59a243a9bb44e5438570bb482ddaf788b0297749d2e45e76384b95"
+  },
+  "nodeGroups": [],
+  "id": "T9FvhkCPnMEJfhT9",
+  "tags": []
+}
